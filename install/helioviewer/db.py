@@ -60,6 +60,8 @@ def setup_database_schema(adminuser, adminpass, dbhost, dbname, dbuser, dbpass, 
     create_flare_prediction_dataset_table(cursor)
     print("Creating flare prediction table")
     create_flare_prediction_table(cursor)
+    print("Creating client_states table")
+    create_client_states_table(cursor)
 
     return db, cursor
 
@@ -796,6 +798,7 @@ def create_movies_table(cursor):
       `dataSourceBitMask` BIGINT UNSIGNED,
       `eventSourceString` VARCHAR(1024) DEFAULT NULL,
       `eventsLabels`      TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
+      `eventsState`       JSON NOT NULL DEFAULT '{}',
       `movieIcons`        tinyint(1) UNSIGNED NOT NULL DEFAULT '0',
       `followViewport`    tinyint(1) DEFAULT '0',
       `scale`             TINYINT(1) UNSIGNED NOT NULL DEFAULT '0',
@@ -887,6 +890,18 @@ def create_rate_limit_table(cursor):
         `count`       int unsigned NOT NULL,
         PRIMARY KEY (`datetime`, `identifier`)
     ) DEFAULT CHARSET=utf8;""")
+
+def create_client_states_table(cursor):
+    """
+    Create table for client states
+    """
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS `client_states` (
+        `id`      CHAR(64) PRIMARY KEY,
+        `state`   JSON NOT NULL DEFAULT '{}',
+        `created` DATETIME DEFAULT CURRENT_TIMESTAMP,
+        `updated` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;""")
 
 def create_flare_prediction_table(cursor):
     """
@@ -990,6 +1005,7 @@ def create_screenshots_table(cursor):
       `dataSourceBitMask` BIGINT UNSIGNED,
       `eventSourceString` VARCHAR(1024) DEFAULT NULL,
       `eventsLabels`      TINYINT(1) UNSIGNED NOT NULL,
+      `eventsState`       JSON NOT NULL DEFAULT '{}',
       `movieIcons`        tinyint(1) UNSIGNED NOT NULL DEFAULT '0',
       `scale`             TINYINT(1) unsigned NOT NULL DEFAULT '0',
       `scaleType`         VARCHAR(12) DEFAULT 'earth',

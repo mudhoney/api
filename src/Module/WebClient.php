@@ -17,6 +17,8 @@ require_once "interface.Module.php";
 require_once HV_ROOT_DIR.'/../src/Validation/InputValidator.php';
 require_once HV_ROOT_DIR.'/../src/Helper/ErrorHandler.php';
 
+use Helioviewer\Api\Event\EventsStateManager;
+
 class Module_WebClient implements Module {
 
     private $_params;
@@ -69,6 +71,10 @@ class Module_WebClient implements Module {
 
         $info = $imgIndex->getScreenshot($this->_params['id']);
 
+        if(!$info) {
+            return $this->_sendResponse(404, "NOT FOUND", "Screenshot not found");
+        }
+
         $layers = new Helper_HelioviewerLayers($info['dataSourceString']);
 
         $dir = sprintf('%s/screenshots/%s/%s/',
@@ -108,6 +114,31 @@ class Module_WebClient implements Module {
         header('Content-type: image/png');
 
         echo file_get_contents($filepath);
+    }
+
+    /**
+     * Finds the closest image available for a given time and datasource
+     *
+     * @return JSON meta information for matching image
+     *
+     * TODO: Combine with getJP2Image? (e.g. "&display=true")
+     */
+    public function getClosestImageDatesForSources() {
+
+        include_once HV_ROOT_DIR.'/../src/Database/ImgIndex.php';
+
+        $imgIndex = new Database_ImgIndex();
+
+        $results = [];
+        
+        foreach($this->_params['sources'] as $sid) {
+            $closestImages = $imgIndex->getClosestDataBeforeAndAfter($this->_params['date'], $sid);
+            $results[$sid]['prev_date'] = $closestImages['prev_date'];
+            $results[$sid]['next_date'] = $closestImages['next_date'];
+        }
+
+        // Print result
+        $this->_printJSON(json_encode($results));
     }
 
     /**
@@ -415,6 +446,88 @@ class Module_WebClient implements Module {
     /**
      * Obtains layer information, ranges of pixels visible, and the date being
      * looked at and creates a composite image (a Screenshot) of all the
+     * layers. Does it with HTTP POST request
+     *
+     * See the API webpage for example usage.
+     *
+     * @return image/jpeg or JSON
+     */
+    public function postScreenshot() 
+    {
+        include_once HV_ROOT_DIR.'/../src/Image/Composite/HelioviewerScreenshot.php';
+        include_once HV_ROOT_DIR.'/../src/Helper/HelioviewerLayers.php';
+
+        $json_params = $this->_params['json'];
+
+        // Data Layers
+        $layers = new Helper_HelioviewerLayers($json_params['layers']);
+
+        // Event Labels
+        $movieIcons = false;
+        if ( array_key_exists('movieIcons', $json_params) ) {
+            $movieIcons = $json_params['movieIcons'];
+        }
+
+        // Scale
+        $scale     = false;
+        $scaleType = 'earth';
+        $scaleX    = 0;
+        $scaleY    = 0;
+        if ( array_key_exists('scale', $json_params) ) {
+            $scale     = (isset($json_params['scale']) ? $json_params['scale'] : $scale);
+            $scaleType = (isset($json_params['scaleType']) ? $json_params['scaleType'] : $scaleType);
+            $scaleX    = (isset($json_params['scaleX']) ? $json_params['scaleX'] : $scaleX);
+            $scaleY    = (isset($json_params['scaleY']) ? $json_params['scaleY'] : $scaleY);
+        }
+
+        // Region of interest
+        $roi = $this->_getRegionOfInterest($json_params, $json_params);
+
+        // Celestial Bodies
+        if( isset($json_params['celestialBodiesLabels']) && isset($json_params['celestialBodiesTrajectories']) ){
+
+            $celestialBodiesLabels = $json_params['celestialBodiesLabels'];
+            $celestialBodiesTrajectories = $json_params['celestialBodiesTrajectories'];
+            $celestialBodies = array(
+                'labels'       => $celestialBodiesLabels,
+                'trajectories' => $celestialBodiesTrajectories
+            );
+
+        } else {
+
+            $celestialBodies = array( "labels" => "", "trajectories" => "");
+
+        }
+
+        $events_manager = EventsStateManager::buildFromEventsState($json_params['eventsState']);
+
+        // Create the screenshot
+        $screenshot = new Image_Composite_HelioviewerScreenshot(
+            $layers, 
+            $events_manager, 
+            $movieIcons, 
+            $celestialBodies, 
+            $scale, 
+            $scaleType, 
+            $scaleX,
+            $scaleY, 
+            $json_params['date'], 
+            $roi, 
+            $json_params
+        );
+
+        // Display screenshot
+        if (isset($json_params['display']) && $json_params['display']) {
+            $screenshot->display();
+        } else {
+            // Print JSON
+            $this->_printJSON(json_encode(array('id' => $screenshot->id)));
+        }
+    }
+
+    /**
+     * Obtains layer information, ranges of pixels visible, and the date being
+     * looked at and creates a composite image (a Screenshot) of all the
      * layers.
      *
      * See the API webpage for example usage.
@@ -427,23 +540,9 @@ class Module_WebClient implements Module {
     public function takeScreenshot() {
         include_once HV_ROOT_DIR.'/../src/Image/Composite/HelioviewerScreenshot.php';
         include_once HV_ROOT_DIR.'/../src/Helper/HelioviewerLayers.php';
-        include_once HV_ROOT_DIR.'/../src/Helper/HelioviewerEvents.php';
 
         // Data Layers
         $layers = new Helper_HelioviewerLayers($this->_params['layers']);
-
-        // Event Layers
-        $events = Array();
-        if ( !array_key_exists('events', $this->_params) ) {
-            $this->_params['events'] = '';
-        }
-        $events = new Helper_HelioviewerEvents($this->_params['events']);
-
-        // Event Labels
-        $eventLabels = false;
-        if ( array_key_exists('eventLabels', $this->_params) ) {
-            $eventLabels = $this->_params['eventLabels'];
-        }
 
         // Event Labels
         $movieIcons = false;
@@ -464,7 +563,7 @@ class Module_WebClient implements Module {
         }
 
         // Region of interest
-        $roi = $this->_getRegionOfInterest();
+        $roi = $this->_getRegionOfInterest($this->_options, $this->_params);
 
         // Celestial Bodies
         if( isset($this->_params['celestialBodiesLabels']) && isset($this->_params['celestialBodiesTrajectories']) ){
@@ -474,22 +573,47 @@ class Module_WebClient implements Module {
                 'labels'       => $celestialBodiesLabels,
                 'trajectories' => $celestialBodiesTrajectories
             );
-        }else{
-            $celestialBodies = array( "labels" => "",
-                                "trajectories" => "");
+        } else {
+            $celestialBodies = array( 
+                "labels" => "", 
+                "trajectories" => ""
+            );
         }
+
+        // Event legacy string
+        $events_legacy_string = "";
+        if ( array_key_exists('events', $this->_params) ) {
+            $events_legacy_string = $this->_params['events'];
+        }
+
+        // Event legacy labels switch
+        $event_labels = false;
+        if ( array_key_exists('eventLabels', $this->_params) ) {
+            $event_labels = (bool)$this->_params['eventLabels'];
+        }
+
+        // Events manager built from old logic
+        $events_manager = EventsStateManager::buildFromLegacyEventStrings($events_legacy_string, $event_labels);
 
         // Create the screenshot
         $screenshot = new Image_Composite_HelioviewerScreenshot(
-            $layers, $events, $eventLabels, $movieIcons, $celestialBodies, $scale, $scaleType, $scaleX,
-            $scaleY, $this->_params['date'], $roi, $this->_options
+            $layers, 
+            $events_manager, 
+            $movieIcons, 
+            $celestialBodies, 
+            $scale, 
+            $scaleType, 
+            $scaleX,
+            $scaleY, 
+            $this->_params['date'], 
+            $roi, 
+            $this->_options
         );
 
         // Display screenshot
         if (isset($this->_options['display']) && $this->_options['display']) {
             $screenshot->display();
-        }
-        else {
+        } else {
             // Print JSON
             $this->_printJSON(json_encode(array('id' => $screenshot->id)));
         }
@@ -505,7 +629,6 @@ class Module_WebClient implements Module {
         include_once HV_ROOT_DIR.'/../src/Database/ImgIndex.php';
         include_once HV_ROOT_DIR.'/../src/Image/Composite/HelioviewerScreenshot.php';
         include_once HV_ROOT_DIR.'/../src/Helper/HelioviewerLayers.php';
-        include_once HV_ROOT_DIR.'/../src/Helper/HelioviewerEvents.php';
         include_once HV_ROOT_DIR.'/../src/Helper/RegionOfInterest.php';
 
         // Default options
@@ -567,19 +690,32 @@ class Module_WebClient implements Module {
         }
 
         // Event Layers
-        $events = new Helper_HelioviewerEvents(
-            $metaData['eventSourceString']);
+        $events_state_from_metadata = json_decode($metaData['eventsState'], true);
+        $events_manager;
+
+        if(!empty($events_state_from_metadata)) {
+            $events_manager = EventsStateManager::buildFromEventsState($events_state_from_metadata);
+        } else {
+            $events_manager = EventsStateManager::buildFromLegacyEventStrings($metaData['eventSourceString'], (bool)$metaData['eventsLabels']);
+        }
+
 
         $celestialBodies = array( "labels" => $metaData['celestialBodiesLabels'],
                             "trajectories" => $metaData['celestialBodiesTrajectories']);
 
         // Create the screenshot
         $screenshot = new Image_Composite_HelioviewerScreenshot(
-            $layers, $events, (bool)$metaData['eventsLabels'], (bool)$metaData['movieIcons'],
+            $layers, 
+            $events_manager, 
+            (bool)$metaData['movieIcons'],
             $celestialBodies,
-            (bool)$metaData['scale'], $metaData['scaleType'],
-            $metaData['scaleX'], $metaData['scaleY'],
-            $metaData['observationDate'], $roi, $options
+            (bool)$metaData['scale'], 
+            $metaData['scaleType'],
+            $metaData['scaleX'], 
+            $metaData['scaleY'],
+            $metaData['observationDate'], 
+            $roi, 
+            $options
         );
     }
 
@@ -619,14 +755,13 @@ class Module_WebClient implements Module {
     }
 
     private static function GetClientUrl(): string {
-        $base = self::GetApiUrl();
-        return str_replace('api.', '', $base);
+        // i.e. http://helioviewer.org
+        return HV_CLIENT_URL;
     }
 
     private static function GetApiUrl(): string {
-        $http = ($_SERVER['HTTPS'] ?? false) ? 'https' : 'http';
-        $baseUrl = "$http://".$_SERVER['SERVER_NAME'];
-        return $baseUrl;
+        // i.e. http://api.helioviewer.org
+        return HV_WEB_ROOT_URL;
     }
 
     public function goto() {
@@ -639,6 +774,58 @@ class Module_WebClient implements Module {
             $base = self::GetClientUrl();
             header("Location: $base");
         }
+    }
+
+    /**
+     * This function saves event state into our database
+     *
+     * It saves the event and returns the identifier
+     */
+    public function saveWebClientState() {
+
+        require_once HV_ROOT_DIR.'/../src/Database/ClientState.php';
+
+        $client_state = new ClientState();
+
+        try {
+
+            $state_key = $client_state->upsert($this->_params['json']);
+
+            return $this->_sendResponse(200, 'OK', $state_key);
+
+        } catch (\Exception $e) {
+            return $this->_sendResponse(500, 'Server Error', '');
+        }
+
+
+    }
+
+    /**
+     * This function returns the event state for the given id 
+     */
+    public function getWebClientState() 
+    {
+        require_once HV_ROOT_DIR.'/../src/Database/ClientState.php';
+
+        $client_state = new ClientState();
+
+        try {
+
+            $state = $client_state->find($this->_params['state_id']);
+
+            if(is_null($state)) {
+                return $this->_sendResponse(404, 'Not Found', '');
+            }
+
+            return $this->_sendResponse(200, 'OK', $state);
+
+        } catch (\Exception $e) {
+
+            return $this->_sendResponse(500, 'Server Error', '');
+
+        }
+
+
     }
 
     /**
@@ -721,17 +908,14 @@ class Module_WebClient implements Module {
      */
      public function getSciDataScript()
      {
-         if (      strtolower($this->_params['lang']) == 'sswidl' ) {
+         if (strtolower($this->_params['lang']) == 'sswidl') {
              include_once HV_ROOT_DIR.'/../src/Helper/SSWIDL.php';
              $script = new Helper_SSWIDL($this->_params);
-         }
-         else if ( strtolower($this->_params['lang']) == 'sunpy' ) {
+         } else if (strtolower($this->_params['lang']) == 'sunpy') {
              include_once HV_ROOT_DIR.'/../src/Helper/SunPy.php';
              $script = new Helper_SunPy($this->_params);
-         }
-         else {
-             handleError(
-                'Invalid value specified for request parameter "lang".', 25);
+         } else {
+             handleError('Invalid value specified for request parameter "lang".', 25);
          }
 
          $script->buildScript();
@@ -757,7 +941,6 @@ class Module_WebClient implements Module {
         }else{
             $events = null;
         }
-
 
 
         $start = @$this->_options['startDate'];
@@ -1176,8 +1359,7 @@ class Module_WebClient implements Module {
         $roi = new Helper_RegionOfInterest(-$range, -$range, $range, $range, 15);
 
         // Create empty events object required for screenshots.
-        include_once HV_ROOT_DIR.'/../src/Helper/HelioviewerEvents.php';
-        $events = new Helper_HelioviewerEvents('');
+        $events_manager = EventStateManager::buildFromLegacyEventStrings('', false);
 
         // Create empty celestial bodies list
         $celestialBodies = array( "labels" => "",
@@ -1186,8 +1368,21 @@ class Module_WebClient implements Module {
         // Create the base screenshot image
         include_once HV_ROOT_DIR.'/../src/Image/Composite/HelioviewerScreenshot.php';
         $screenshot = new Image_Composite_HelioviewerScreenshot(
-            $layers, $events, false, false, $celestialBodies, false, 'earth', 0, 0, $now_str, $roi,
-            ['grayscale' => true, 'eclipse' => true, 'moon' => $this->_options['moon']]
+            $layers, 
+            $events_manager,
+            false, 
+            $celestialBodies, 
+            false, 
+            'earth', 
+            0, 
+            0, 
+            $now_str, 
+            $roi,
+            [
+                'grayscale' => true, 
+                'eclipse' => true, 
+                'moon' => $this->_options['moon']
+            ]
         );
         $screenshot->display();
     }
@@ -1259,42 +1454,50 @@ class Module_WebClient implements Module {
      *  1) x1, y1, x2, y2, OR
      *  2) x0, y0, width, height
      */
-    private function _getRegionOfInterest() {
+     private function _getRegionOfInterest($options, $params) 
+     {
 
         include_once HV_ROOT_DIR.'/../src/Helper/RegionOfInterest.php';
 
-        // Region of interest: x1, x2, y1, y2
-        if (isset($this->_options['x1']) && isset($this->_options['y1']) &&
-            isset($this->_options['x2']) && isset($this->_options['y2'])) {
+        $isset_x0 = isset($options['x0']);
+        $isset_x1 = isset($options['x1']);
+        $isset_x2 = isset($options['x2']);
+        $isset_y0 = isset($options['y0']);
+        $isset_y1 = isset($options['y1']);
+        $isset_y2 = isset($options['y2']);
+        $isset_height = isset($options['height']);
+        $isset_width = isset($options['width']);
 
-            $x1 = $this->_options['x1'];
-            $y1 = $this->_options['y1'];
-            $x2 = $this->_options['x2'];
-            $y2 = $this->_options['y2'];
-        }
-        else if ( isset($this->_options['x0']) &&
-                  isset($this->_options['y0']) &&
-                  isset($this->_options['width']) &&
-                  isset($this->_options['height']) ) {
+
+        // Region of interest: x1, x2, y1, y2
+        if ($isset_x1 && $isset_y1 && $isset_x2 && $isset_y2) {
+
+            $x1 = $options['x1'];
+            $y1 = $options['y1'];
+            $x2 = $options['x2'];
+            $y2 = $options['y2'];
+
+        } else if ( $isset_x0 && $isset_y0 && $isset_width && $isset_height ) {
 
             // Region of interest: x0, y0, width, height
-            $x1 = $this->_options['x0'] - 0.5 * $this->_options['width'] * $this->_params['imageScale'];
-            $y1 = $this->_options['y0'] - 0.5 * $this->_options['height'] * $this->_params['imageScale'];
+            $x1 = $options['x0'] - 0.5 * $options['width'] * $params['imageScale'];
+            $y1 = $options['y0'] - 0.5 * $options['height'] * $params['imageScale'];
 
-            $x2 = $this->_options['x0'] + 0.5 * $this->_options['width'] * $this->_params['imageScale'];
-            $y2 = $this->_options['y0'] + 0.5 * $this->_options['height'] * $this->_params['imageScale'];
-        }
-        else {
+            $x2 = $options['x0'] + 0.5 * $options['width'] * $params['imageScale'];
+            $y2 = $options['y0'] + 0.5 * $options['height'] * $params['imageScale'];
+
+        } else {
+
             throw new Exception(
                 'Region of interest not specified: you must specify values ' .
                 'for imageScale and either x1, x2, y1, and y2 or x0, y0, ' .
                 'width and height.', 23
             );
+
         }
 
         // Create RegionOfInterest helper object
-        return new Helper_RegionOfInterest($x1, $y1, $x2, $y2,
-            $this->_params['imageScale']);
+        return new Helper_RegionOfInterest($x1, $y1, $x2, $y2, $params['imageScale']);
     }
 
 
@@ -1339,6 +1542,26 @@ class Module_WebClient implements Module {
             "%s%s/%s_%s_x%d_y%d%s.png", $baseDirectory, $directory,
             $baseFilename, $scale, $x, $y, $difference
         );
+    }
+
+    /**
+     * Helper function to handle response code and response message with
+     * output result as either JSON or JSONP
+     *
+     * @param int    $code HTTP response code to return
+     * @param string $message  Message for the response code,
+     * @param mixed  $data Data can be anything 
+     *
+     * @return void
+     */
+    private function _sendResponse(int $code, string $message, mixed $data) : void
+    {
+        http_response_code($code);
+        $this->_printJSON(json_encode([
+            'status_code' => $code,
+            'status_txt' => $message,
+            'data' => $data,
+        ]));
     }
 
     /**
@@ -1435,6 +1658,18 @@ class Module_WebClient implements Module {
 
         switch( $this->_params['action'] ) {
 
+        case 'saveWebClientState':
+            $expected = array(
+               'required' => array('json'),
+            );
+            break;
+
+        case 'getWebClientState':
+            $expected = array(
+               'required' => array('state_id'),
+            );
+            break;
+
         case 'downloadScreenshot':
             $expected = array(
                'required' => array('id'),
@@ -1451,6 +1686,14 @@ class Module_WebClient implements Module {
                'bools'      => array('switchSources'),
                'alphanum' => array('callback'),
                'ints'     => array('sourceId')
+            );
+            break;
+
+        case 'getClosestImageDatesForSources':
+            $expected = array(
+               'required' => array('date', 'sources'),
+               'dates'    => array('date'),
+               'array_ints'  => array('sources'),
             );
             break;
         case 'getDataSources':
@@ -1539,6 +1782,12 @@ class Module_WebClient implements Module {
                 'alphanum' => array('scaleType', 'callback'),
                 'layer'    => array('layers')
             );
+            break;
+
+        case 'postScreenshot':
+            $expected = [
+                'required' => ['json'],
+            ];
             break;
         case 'getStatus':
             $expected = array(

@@ -141,7 +141,7 @@ class Database_MovieDatabase {
             $result = $this->_dbConnection->query($sql);
         }
         catch (Exception $e) {
-            error_log("Failed to insert movie: " . $e->getMessage());
+            error_log("Failed to insert movie: " . substr($e->getMessage(), -50));
             throw new \Exception("Could create movie in our database", 2, $e); 
         }
 

@@ -47,5 +47,9 @@ jobs:
     - name: Run phpunit tests
       run: docker exec -t helioviewer-api-1 composer run-script test
 
+    - name: Print container logs logs
+      if: always()
+      run: docker logs helioviewer-api-1
+
     - name: Run python tests
       run: docker exec -t helioviewer-api-1 composer run-script test-python

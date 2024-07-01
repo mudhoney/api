@@ -2,6 +2,7 @@
 """Helioviewer.org JPEG 2000 processing functions"""
 import os
 import sys
+import redis
 from helioviewer.db import get_datasources, enable_datasource
 from helioviewer.jp2parser import JP2parser
 
@@ -45,11 +46,81 @@ def process_jp2_images(images, root_dir, db, cursor, mysql=True, step_fxn=None, 
     # Return tree of known data-sources
     sources = get_datasources(cursor)
 
+    # Get the list of affected source_ids 
+    affected_source_ids = get_affected_source_ids(images, sources)
+
     # Insert images into database, 500 at a time
     while len(images) > 0:
         subset = images[:__INSERTS_PER_QUERY__]
         images = images[__INSERTS_PER_QUERY__:]
         insert_images(subset, sources, root_dir, db, cursor, mysql, step_fxn, cursor_v2)
+
+    clean_redis_cache(affected_source_ids)
+
+def get_affected_source_ids(images, sources):
+
+    """Returns the unique list of source_ids inside this images
+
+    Parameters
+    ----------
+    images : list
+        list of image dict representations
+    sources : list
+        tree of datasources supported by Helioviewer
+    """
+
+    unique_sources = []
+
+    for i, img in enumerate(images):
+        # break up directory and filepath
+        prev = ""
+        source = sources
+
+        if img['observatory'] == "Hinode":
+            leafs = ["observatory", "instrument", "detector", "filter1", "filter2"]
+        elif img["observatory"] == "RHESSI":
+            leafs = ["observatory", "energy_band", "reconstruction_method"]
+        else:
+            leafs = ["observatory", "instrument", "detector", "measurement"]
+
+        for leaf in leafs:
+
+            if img[leaf] != prev:
+                source = source[str(img[leaf])]
+            prev = img[leaf]
+
+        if source['id'] not in unique_sources:
+            unique_sources.append(source['id'])
+
+    return unique_sources
+
+def clean_redis_cache(source_ids):
+    """Cleans redis cache for source_ids
+
+    Parameters
+    ----------
+    source_ids : list
+        list of source ids to clean their cache
+    """
+    r = redis.Redis(host='redis', port=6379)
+
+    for sid in source_ids:
+        source_ids_key_pattern = f"closest_images.{sid}.next.*"
+
+        batch_size = 400
+        keys = []
+
+        for k in r.scan_iter(match=source_ids_key_pattern, count=batch_size):
+            keys.append(k)
+
+            if len(keys) >= batch_size:
+                print(keys)
+                res = r.delete(*keys)
+                keys = []
+
+        if len(keys) > 0:
+            print(keys)
+            r.delete(*keys)
 
 
 def insert_images(images, sources, rootdir, db, cursor, mysql, step_function=None, cursor_v2=None):

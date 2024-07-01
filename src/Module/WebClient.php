@@ -18,6 +18,7 @@ require_once HV_ROOT_DIR.'/../src/Validation/InputValidator.php';
 require_once HV_ROOT_DIR.'/../src/Helper/ErrorHandler.php';
 
 use Helioviewer\Api\Event\EventsStateManager;
+use Helioviewer\Api\Helper\RedisCache;
 
 class Module_WebClient implements Module {
 
@@ -127,14 +128,37 @@ class Module_WebClient implements Module {
 
         include_once HV_ROOT_DIR.'/../src/Database/ImgIndex.php';
 
-        $imgIndex = new Database_ImgIndex();
+        $img_index = new Database_ImgIndex();
+
+        $redis_cache = RedisCache::getInstance();
+
+        $cache_key_previous_image_template = "closest_images.%d.previous.%s";
+        $cache_key_next_image_template = "closest_images.%d.next.%s";
 
         $results = [];
 
         foreach($this->_params['sources'] as $sid) {
-            $closestImages = $imgIndex->getClosestDataBeforeAndAfter($this->_params['date'], $sid);
-            $results[$sid]['prev_date'] = $closestImages['prev_date'];
-            $results[$sid]['next_date'] = $closestImages['next_date'];
+
+            $cache_key_previous_image = sprintf($cache_key_previous_image_template, $sid, $this->_params['date']);
+            $cache_key_next_image = sprintf($cache_key_next_image_template, $sid, $this->_params['date']);
+
+            $previous_image_date = $redis_cache->fetch($cache_key_previous_image);
+            $next_image_date = $redis_cache->fetch($cache_key_next_image);
+
+            if ($previous_image_date === false) {
+                $previous_image_date = $img_index->getPreviosImageDateBeforeObservation($this->_params['date'], $sid);
+                $redis_cache->save($cache_key_previous_image, $previous_image_date); 
+            }
+
+            if ($next_image_date === false) {
+                $next_image_date = $img_index->getNextImageDateAfterObservation($this->_params['date'], $sid);
+                $redis_cache->save($cache_key_next_image, $next_image_date); 
+            }
+
+            $results[$sid] = [
+                'prev_date' => $previous_image_date,
+                'next_date' => $next_image_date,
+            ];
         }
 
         // Print result

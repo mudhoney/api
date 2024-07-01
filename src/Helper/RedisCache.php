@@ -1,10 +1,16 @@
-<?php declare(strict_types=1);
+<?php 
+declare(strict_types=1);
+namespace Helioviewer\Api\Helper;
 
-require_once HV_ROOT_DIR . "/../vendor/autoload.php";
+use \DeviceDetector\Cache\CacheInterface;
+use \Redis;
 
-class RedisCache implements DeviceDetector\Cache\CacheInterface {
+class RedisCache implements CacheInterface {
     // Redis Docs: https://phpredis.github.io/phpredis/Redis.html
     private $_redis;
+
+    // Private class instance for singleton purposes
+    private static $instance = null;
 
     /**
      * Create a redis-based cache instance
@@ -16,6 +22,22 @@ class RedisCache implements DeviceDetector\Cache\CacheInterface {
         if ($port == 0) { $port = HV_REDIS_PORT; }
         $this->_redis = new Redis();
         $this->_redis->connect($host, $port);
+    }
+
+
+    /**
+     * Get a singleton redis cache
+     * @param string $host Redis server hostname/ip
+     * @param int $port Redis server port
+     * @return RedisCache
+     */
+    public static function getInstance(string $host = "", int $port = 0) : RedisCache 
+    {
+        if(self::$instance == null) {
+            self::$instance = new RedisCache($host, $port);
+        }
+
+        return self::$instance;
     }
 
     /**

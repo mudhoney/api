@@ -509,72 +509,68 @@ class Database_ImgIndex {
     }
 
     /**
-     * Return the closest matches from the `data` table whose time is just before and just after of the given time
-     * there can be null dates, if there is before or after image
-     * @param string $date     UTC date string like "2003-10-05T00:00:00Z"
-     * @param int    $sourceId The data source identifier in the database
+     * Return the closest matches from the `data` table whose time is just before the given observation time
+     * this can be null if there is no before image
      *
-     * @return array Array containing 1 next image and 1 prev date image
+     * @param string $observation_date  UTC date string like "2003-10-05T00:00:00Z"
+     * @param int    $source_id         The data source identifier in the database
+     *
+     * @return string $date , previous image date before the observation date
      */
-    public function getClosestDataBeforeAndAfter($date, $sourceId) 
+    public function getPreviosImageDateBeforeObservation($observation_date, $source_id) 
     {
         include_once HV_ROOT_DIR.'/../src/Helper/DateTimeConversions.php';
 
         $this->_dbConnect();
 
-        $datestr = isoDateToMySQL($date);
+        $observation_date_string = isoDateToMySQL($observation_date);
+        $observation_date_sql_string = $this->_dbConnection->link->real_escape_string($observation_date_string);
 
-        // Before date first image
-        $sql_before = sprintf(
-                   "SELECT date "
-                 . "FROM data "
-                 . "WHERE "
-                 .     "sourceId " . " = %d AND "
-                 .     "date "     . "< '%s' "
-                 . "ORDER BY date DESC "
-                 . "LIMIT 1;",
-                 (int)$sourceId,
-                 $this->_dbConnection->link->real_escape_string($datestr)
-               );
+        // Previous image before observation date
+        $sql_prev_image = sprintf("SELECT date FROM data WHERE sourceId = %d AND date < '%s' ORDER BY date DESC LIMIT 1;", $source_id, $observation_date_sql_string);
 
         try {
-            $result = $this->_dbConnection->query($sql_before);
+            $result = $this->_dbConnection->query($sql_prev_image);
         } catch (Exception $e) {
-            throw new \Exception("Unable to find before image for ".$date." and sourceId:".$sourceId, 2, $e);
+            throw new \Exception("Unable to find previous image for ".$observation_date." and sourceId:".$source_id, 2, $e);
         }
 
-        $before_date = $result->fetch_array(MYSQLI_ASSOC);
+        $prev_image_date = $result->fetch_array(MYSQLI_ASSOC);
 
-        // After date first image
-        $sql_after = sprintf(
-                   "SELECT date "
-                 . "FROM data "
-                 . "WHERE "
-                 .     "sourceId " . " = %d AND "
-                 .     "date "     . "> '%s' "
-                 . "ORDER BY date ASC "
-                 . "LIMIT 1;",
-                 (int)$sourceId,
-                 $this->_dbConnection->link->real_escape_string($datestr)
-               );
-
-        try {
-            $result = $this->_dbConnection->query($sql_after);
-        } catch (Exception $e) {
-            throw new \Exception("Unable to find before image for ".$date." and sourceId:".$sourceId, 2, $e);
-        }
-
-        // pre($result);
-        $after_date = $result->fetch_array(MYSQLI_ASSOC);
-
-        return [
-            'prev_date' => $before_date ? $before_date['date']: null,
-            'next_date'  => $after_date ? $after_date['date'] : null,
-        ];
-
+        return $prev_image_date ? $prev_image_date['date'] : null;
     }
 
+    /**
+     * Return the closest matches from the `data` table whose time is just after the given observation time
+     * this can be null if there is no after image
+     *
+     * @param string $observation_date  UTC date string like "2003-10-05T00:00:00Z"
+     * @param int    $source_id         The data source identifier in the database
+     *
+     * @return string $date , next image date after the observation date
+     */
+    public function getNextImageDateAfterObservation($observation_date, $source_id) 
+    {
+        include_once HV_ROOT_DIR.'/../src/Helper/DateTimeConversions.php';
 
+        $this->_dbConnect();
+
+        $observation_date_string = isoDateToMySQL($observation_date);
+        $observation_date_sql_string = $this->_dbConnection->link->real_escape_string($observation_date_string);
+
+        // Next image after observation date
+        $sql_next_image = sprintf("SELECT date FROM data WHERE sourceId = %d AND date > '%s' ORDER BY date ASC LIMIT 1;", $source_id, $observation_date_sql_string);
+
+        try {
+            $result = $this->_dbConnection->query($sql_next_image);
+        } catch (Exception $e) {
+            throw new \Exception("Unable to find next image for ".$observation_date." and sourceId:".$source_id, 2, $e);
+        }
+
+        $next_image_date = $result->fetch_array(MYSQLI_ASSOC);
+
+        return $next_image_date ? $next_image_date['date'] : null;
+    }
 
     /**
      * Return the closest match from the `data` table whose time is on

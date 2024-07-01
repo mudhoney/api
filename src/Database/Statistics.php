@@ -18,6 +18,8 @@ require_once HV_ROOT_DIR . "/../src/Helper/ArrayExtensions.php";
 use DeviceDetector\ClientHints;
 use DeviceDetector\DeviceDetector;
 
+use Helioviewer\Api\Helper\RedisCache;
+
 class Database_Statistics {
 
     private $_dbConnection;
@@ -111,8 +113,7 @@ class Database_Statistics {
         // OPTIONAL: Set caching method
         // By default static cache is used, which works best within one php process (memory array caching)
         // To cache across requests use caching in files or memcache
-        require_once HV_ROOT_DIR . "/../src/Helper/RedisCache.php";
-        $dd->setCache(new RedisCache(HV_REDIS_HOST, HV_REDIS_PORT));
+        $dd->setCache(RedisCache::getInstance(HV_REDIS_HOST, HV_REDIS_PORT));
         $dd->parse();
 
         if ($dd->isBot()) {

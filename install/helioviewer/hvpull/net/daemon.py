@@ -10,11 +10,9 @@ import datetime
 import time
 import logging
 import os
-import subprocess
 import shutil
-import sunpy
-from random import shuffle
-from helioviewer.jp2 import process_jp2_images, BadImage, create_image_data
+import traceback
+from helioviewer.jp2 import process_jp2_images, BadImage, create_image_data, transcode, KduTranscodeError
 from helioviewer.db  import get_db_cursor, mark_as_corrupt
 from helioviewer.hvpull.browser.basebrowser import NetworkError
 from sunpy.time import is_time
@@ -527,8 +525,10 @@ class ImageRetrievalDaemon:
                 try:
                     image_params = create_image_data(filepath)
                 except:
+                    # Make sure the full exception gets into the log
+                    # so we can debug it.
+                    logging.error(traceback.format_exc())
                     raise BadImage("HEADER")
-                    logging.warn('BadImage("HEADER") error raised')
                 self._validate(image_params)
             except BadImage as e:
                 logging.warn("Quarantining invalid image: %s", filename)
@@ -546,10 +546,16 @@ class ImageRetrievalDaemon:
             # Therefore, any problem with the transcoding process must raise
             # an error.
             try:
+                cprecincts = None
                 if image_params['instrument'] == "AIA":
-                    self._transcode(filepath, cprecincts=[128, 128])
-                else:
-                    self._transcode(filepath)
+                    cprecincts = [128,128]
+                transcoded = transcode(self.kdu_transcode, filepath, cprecincts=cprecincts)
+                # Remove old version and replace with transcoded one
+                # OSError
+                os.remove(filepath)
+                logging.info('Removed %s ' % filepath)
+                os.rename(transcoded, filepath)
+                logging.info('Renamed %s to %s' % (transcoded, filepath))
             except KduTranscodeError as e:
                 logging.error("kdu_transcode: " + e.get_message())
                 logging.error("Quitting due to kdu_transcode error")
@@ -563,6 +569,8 @@ class ImageRetrievalDaemon:
             # Move to archive
             if image_params['observatory'] == "Hinode":
                 directory = os.path.join(self.image_archive, image_params['nickname'], date_str, str(image_params['filter1']), str(image_params['filter2']))
+            elif image_params['observatory'] == "RHESSI":
+                directory = os.path.join(self.image_archive, image_params['nickname'], date_str, str(image_params['reconstruction_method']))
             else:
                 directory = os.path.join(self.image_archive, image_params['nickname'], date_str, str(image_params['measurement']))
 
@@ -657,7 +665,7 @@ class ImageRetrievalDaemon:
         """Sends an email notification to the Helioviewer admin(s) when a
         one of the data sources becomes unreachable."""
         # If no server was specified, don't do anything
-        if self.email_server is "":
+        if self.email_server == "":
             return
 
         # import email modules
@@ -688,51 +696,6 @@ class ImageRetrievalDaemon:
         for server in self.downloaders:
             for downloader in server:
                 downloader.stop()
-
-    def _transcode(self, filepath, corder='RPCL', orggen_plt='yes', cprecincts=None):
-        """Transcodes JPEG 2000 images to allow support for use with JHelioviewer
-        and the JPIP server"""
-        tmp = filepath + '.tmp.jp2'
-
-        # Base command
-
-        command ='%s -i "%s" -o "%s"' % (self.kdu_transcode, filepath, tmp)
-
-        # Corder
-        if corder is not None:
-            command += " Corder=%s" % corder
-
-        # ORGgen_plt
-        if orggen_plt is not None:
-            command += " ORGgen_plt=%s" % orggen_plt
-
-        # Cprecincts
-        if cprecincts is not None:
-            command += " Cprecincts=\{%d,%d\}" % (cprecincts[0], cprecincts[1])
-
-        # Hide output
-        command += " >/dev/null"
-
-        # Execute kdu_transcode (retry up to five times)
-        num_retries = 0
-
-        while not os.path.isfile(tmp) and num_retries <= 5:
-            result = subprocess.run(command, shell=True, capture_output=True)
-            num_retries += 1
-
-        # If transcode failed, raise an exception
-        if not os.path.isfile(tmp):
-            logging.info('File %s reported as not found.' % tmp)
-            logging.info(f'kdu_transcode stdout: {result.stdout}')
-            logging.info(f'kdu_transcode stderr: {result.stderr}')
-            raise KduTranscodeError(filepath)
-
-        # Remove old version and replace with transcoded one
-        # OSError
-        os.remove(filepath)
-        logging.info('Removed %s ' % filepath)
-        os.rename(tmp, filepath)
-        logging.info('Renamed %s to %s' % (tmp, filepath))
 
     def _check_free_space(self):
         """Checks the amount of free space on the data volume and emails admins
@@ -918,7 +881,8 @@ class ImageRetrievalDaemon:
             "suvi": "SUVIDataServer",
             "iris": "IRISDataServer",
             "hv_iris": "HvIRISDataServer",
-            "halpha": "GongDataServer"
+            "halpha": "GongDataServer",
+            "rhessi": "RHESSIDataServer"
         }
 
     @classmethod
@@ -937,13 +901,5 @@ class ImageRetrievalDaemon:
             "localmove": "LocalFileMove"
         }
 
-
-class KduTranscodeError(RuntimeError):
-    """Exception to raise an image cannot be transcoded."""
-    def __init__(self, message=""):
-        self.message = message
-
-    def get_message(self):
-        return self.message
 
 """ImageRetreivalDaemon"""

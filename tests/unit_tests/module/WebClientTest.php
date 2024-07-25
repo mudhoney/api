@@ -45,4 +45,70 @@ final class WebClientTest extends TestCase
 
         $result = $client->execute();
     }
+
+    /**
+     * Verifying that the web client state validates incoming json against
+     * the client_state schema.
+     * @runInSeparateProcess
+     */
+    public function test_saveWebClientState_valid() {
+        $json_string = file_get_contents(__DIR__ . "/test_data/valid.json");
+        if ($json_string === false) {
+          throw new Exception("Failed to read test json file.");
+        }
+        $json = json_decode($json_string, true);
+        $params = array(
+          'action' => 'saveWebClientState',
+          'json' => $json
+        );
+        // Set up the client
+        $client = new Module_WebClient($params);
+        $client->execute();
+        $this->expectNotToPerformAssertions();
+    }
+
+    /**
+     * Verifying that the web client state validates incoming json against
+     * the client_state schema.
+     * @runInSeparateProcess
+     */
+    public function test_saveWebClientState_invalid() {
+        $json_string = file_get_contents(__DIR__ . "/test_data/invalid.json");
+        if ($json_string === false) {
+          throw new Exception("Failed to read test json file.");
+        }
+        $json = json_decode($json_string, true);
+        $params = array(
+          'action' => 'saveWebClientState',
+          'json' => $json
+        );
+        // Set up the client
+        $client = new Module_WebClient($params);
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("centerY");
+        $this->expectExceptionMessage("must match the type: number");
+        $client->execute();
+    }
+
+    /**
+     * Verifying eclipse image is created correctly with png image output
+     * @runInSeparateProcess
+     */
+    public function test_getEclipseImageExpectedAsPNG() {
+        $params = array(
+          'action' => 'getEclipseImage',
+        );
+        // Set up the client
+        $client = new Module_WebClient($params);
+
+        // Save 
+        ob_start();
+        $client->execute();
+        $image_string = ob_get_contents();
+        ob_end_clean();
+
+        $finfo = new \finfo(FILEINFO_MIME);
+        $this->assertEquals($finfo->buffer($image_string), 'image/png; charset=binary');
+    }
+
 }

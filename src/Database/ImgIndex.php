@@ -41,6 +41,15 @@ class Database_ImgIndex {
     }
 
     /**
+     * Deconstructor should be executed when this class instance is not referenced
+     *
+     * @return void
+     */
+    public function __destruct() {
+        $this->_dbConnection = false;
+    }
+
+    /**
      * Insert a new screenshot into the `screenshots` table.
      *
      * @return int Identifier in the `screenshots` table
@@ -210,8 +219,8 @@ class Database_ImgIndex {
         $sql = sprintf(
                    "UPDATE movies "
                  . "SET "
-                 .     "buildTimeStart " . " ='%s', "
-                 .     "buildTimeEnd= "  . " ='%s' "
+                 .     "buildTimeStart='%s', "
+                 .     "buildTimeEnd='%s' "
                  . "WHERE id "           . " = %d "
                  . "LIMIT 1;",
                  $this->_dbConnection->link->real_escape_string(

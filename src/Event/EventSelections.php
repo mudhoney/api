@@ -84,6 +84,19 @@ class EventSelections implements ArrayAccess, Countable, IteratorAggregate
      * @param string $events_state_string Legacy event string like "[AR,all,1],[FL,NOAA_SWPC,1]"
      * @return EventSelections
      */
+    /**
+     * Creates a new EventSelections from a pre-parsed list of selection paths.
+     * Used by callers (e.g. eventsDataCoverage POST body) that already speak the
+     * canonical SOURCE>>Label>>FRM shape and don't need the legacy-string parse.
+     *
+     * @param string[] $paths Selection paths like 'HEK>>Active Region>>SPoCA'
+     * @return EventSelections
+     */
+    public static function buildFromPaths(array $paths): EventSelections
+    {
+        return new self(array_values($paths));
+    }
+
     public static function buildFromLegacyEventStrings(string $events_state_string): EventSelections
     {
         $selections = [];

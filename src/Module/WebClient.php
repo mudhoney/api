@@ -1031,6 +1031,43 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
     }
 
     /**
+     * API Endpoint: eventsDataCoverage
+     *
+     * POST replacement for the eventLayers half of getDataCoverage. Takes
+     * canonical selection paths in the JSON body instead of legacy event-type
+     * pins in the query string.
+     *
+     * Query params: currentDate, startDate, endDate (ms epoch)
+     * Body: { "event_selections": ["SOURCE>>Label>>FRM", ...] }
+     *
+     * Response shape unchanged from getDataCoverage's eventLayers branch --
+     * see docs for eventsDataCoverage.
+     */
+    public function eventsDataCoverage() {
+        try {
+            $json_params = $this->_params['json'] ?? [];
+            $paths       = $json_params['event_selections'] ?? [];
+
+            $timeline = EventTimeline::fromPaths(
+                $paths,
+                $this->_params['startDate'] ?? null,
+                $this->_params['endDate']   ?? null,
+                $this->_params['currentDate'] ?? null,
+                $this->eventsApi()
+            );
+            $this->_printJSON($timeline->execute());
+        } catch (InvalidArgumentException $e) {
+            return $this->_sendResponse(400, 'Invalid time parameters', $e->getMessage());
+        } catch (Exception $e) {
+            // EventsApiException already captured to Sentry by EventsApi
+            if (!($e instanceof EventsApiException)) {
+                Sentry::capture($e);
+            }
+            return $this->_sendResponse(500, 'Internal server error', $e->getMessage());
+        }
+    }
+
+    /**
      * Returns data coverage for IMAGE layers.
      * Queries the data_coverage_30_min table for image availability data.
      */
@@ -1748,6 +1785,13 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
                 'ints'     => array('startDate', 'endDate', 'currentDate'),
                 'layer'    => array('imageLayers'),
                 'legacy_event_string' => array('eventLayers')
+            );
+            break;
+        case 'eventsDataCoverage':
+            $expected = array(
+                'required' => array('startDate', 'endDate', 'currentDate', 'json'),
+                'ints'     => array('startDate', 'endDate', 'currentDate'),
+                'schema'   => array('json' => 'https://api.helioviewer.org/schema/events_data_coverage.schema.json'),
             );
             break;
         case 'getDataCoverageTimeline':

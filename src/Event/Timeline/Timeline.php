@@ -61,6 +61,33 @@ class Timeline
     }
 
     /**
+     * Factory for callers that already have pre-parsed selection paths
+     * (e.g. the eventsDataCoverage POST body). Skips the legacy-string parser.
+     *
+     * @param string[]                 $paths            Selection paths (e.g. ['HEK>>Active Region', 'WSA>>Magnetic Connectivity'])
+     * @param mixed                    $startTimestamp   ms epoch
+     * @param mixed                    $endTimestamp     ms epoch
+     * @param mixed                    $currentTimestamp ms epoch
+     * @param EventsApiInterface|null  $eventsApi
+     * @param CoverageInterface|null   $strategy
+     */
+    public static function fromPaths(
+        array $paths,
+        $startTimestamp,
+        $endTimestamp,
+        $currentTimestamp,
+        ?EventsApiInterface $eventsApi = null,
+        ?CoverageInterface $strategy = null
+    ): self {
+        // Construct with an empty legacy string, then replace eventSelections
+        // with the pre-parsed paths. The empty string is a no-op inside
+        // buildFromLegacyEventStrings so this is safe.
+        $instance = new self('', $startTimestamp, $endTimestamp, $currentTimestamp, $eventsApi, $strategy);
+        $instance->eventSelections = EventSelections::buildFromPaths($paths);
+        return $instance;
+    }
+
+    /**
      * Execute the timeline query and return JSON string.
      *
      * @return string JSON array of series data for the frontend

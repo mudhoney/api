@@ -61,6 +61,7 @@ class Image_Composite_HelioviewerCompositeImage {
         'SR' => '9DA4FF',
         'HY' => 'CA89FF',
         'NR' => 'FFD391',
+        'MC' => 'B0C4FF',
     ];
 
     /**

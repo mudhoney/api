@@ -62,6 +62,10 @@ class EventSelections implements ArrayAccess, Countable, IteratorAggregate
         'RHESSI' => [
             'F2' => 'Solar Flares',
         ],
+        'WSA' => [
+            'MC' => 'Magnetic Connectivity',
+            'CH' => 'Coronal Hole',
+        ],
     ];
 
     private array $selections;

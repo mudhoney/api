@@ -21,7 +21,7 @@ use Helioviewer\Api\Sentry\ClientInterface as SentryClientInterface;
 class EventsApi implements EventsApiInterface {
 
     /** Known event sources */
-    public const VALID_SOURCES = ['HEK', 'CCMC', 'RHESSI'];
+    public const VALID_SOURCES = ['HEK', 'CCMC', 'RHESSI', 'WSA'];
 
     /** Fallback used when the HV_* config constant is not defined. */
     private const DEFAULT_MAX_CHUNK_SIZE = 150;

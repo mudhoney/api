@@ -643,25 +643,12 @@ class Image_Composite_HelioviewerCompositeImage {
         if (empty($events_to_render)) return;
 
         // Draw event footprint polygons onto the composite image.
-        // Footprint is an array of {x, y} points in HPC arcseconds (already rotated by Events API).
-        // We convert each point from arcseconds to pixel coordinates relative to the ROI,
-        // then draw a semi-transparent yellow polygon matching the frontend SVG style.
+        // Footprint is a list of rings; each ring is a list of {x, y} points in HPC arcseconds
+        // (already rotated by Events API). We convert each point from arcseconds to pixel
+        // coordinates relative to the ROI, then draw one polygon per ring matching the
+        // frontend SVG style.
         foreach ($events_to_render as $event) {
             if (empty($event['footprint'])) continue;
-
-            // Convert HPC arcseconds to pixel coordinates:
-            //   px_x = (hpc_x - roi_left) / imageScale - timeOffsetX
-            //   px_y = (-hpc_y - roi_top) / imageScale - timeOffsetY  (Y negated: HPC up → pixel down)
-            $polyArray = [];
-            foreach ($event['footprint'] as $point) {
-                $polyArray[] = [
-                    'x' => (( $point['x'] - $this->roi->left()) / $this->roi->imageScale()) - $this->_timeOffsetX,
-                    'y' => ((-$point['y'] - $this->roi->top() ) / $this->roi->imageScale()) - $this->_timeOffsetY,
-                ];
-            }
-
-            // Need at least 3 points to form a polygon
-            if (count($polyArray) < 3) continue;
 
             // Match frontend SVG spec:
             // - Fill: per-type color (fallback #d4d4d4) at 40% opacity (0x66)
@@ -674,9 +661,28 @@ class Image_Composite_HelioviewerCompositeImage {
             $draw->setStrokeWidth(1.5);
             $draw->setStrokeAntialias(true);
             $draw->setFillColor('#' . $fillHex . '66');
-            $draw->polygon($polyArray);
 
-            $imagickImage->drawImage($draw);
+            // Convert HPC arcseconds to pixel coordinates per ring:
+            //   px_x = (hpc_x - roi_left) / imageScale - timeOffsetX
+            //   px_y = (-hpc_y - roi_top) / imageScale - timeOffsetY  (Y negated: HPC up → pixel down)
+            $anyRingDrawn = false;
+            foreach ($event['footprint'] as $ring) {
+                $polyArray = [];
+                foreach ($ring as $point) {
+                    $polyArray[] = [
+                        'x' => (( $point['x'] - $this->roi->left()) / $this->roi->imageScale()) - $this->_timeOffsetX,
+                        'y' => ((-$point['y'] - $this->roi->top() ) / $this->roi->imageScale()) - $this->_timeOffsetY,
+                    ];
+                }
+                // Need at least 3 points to form a polygon
+                if (count($polyArray) < 3) continue;
+                $draw->polygon($polyArray);
+                $anyRingDrawn = true;
+            }
+
+            if ($anyRingDrawn) {
+                $imagickImage->drawImage($draw);
+            }
             $draw->destroy();
         }
 

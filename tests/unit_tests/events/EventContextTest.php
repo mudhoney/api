@@ -82,7 +82,7 @@ final class EventContextTest extends TestCase
                     'path'      => 'HEK>>Active Region>>SPoCA',
                     'hv_hpc_x'  => 100.0,
                     'hv_hpc_y'  => 200.0,
-                    'footprint' => [['x' => 110.0, 'y' => 210.0]],
+                    'footprint' => [[['x' => 110.0, 'y' => 210.0]]],
                 ],
             ],
             'timestamps' => [
@@ -97,8 +97,9 @@ final class EventContextTest extends TestCase
         $events = $context->getEventsForDate($ts);
         $this->assertCount(1, $events);
         // dx = 120 - 100 = 20, dy = 230 - 200 = 30. Footprint point (110, 210) -> (130, 240).
-        $this->assertSame(130.0, $events[0]['footprint'][0]['x']);
-        $this->assertSame(240.0, $events[0]['footprint'][0]['y']);
+        // Footprint is a list of rings; single-ring, single-point fixture -> [0][0].
+        $this->assertSame(130.0, $events[0]['footprint'][0][0]['x']);
+        $this->assertSame(240.0, $events[0]['footprint'][0][0]['y']);
         $this->assertSame(120.0, $events[0]['hv_hpc_x']);
         $this->assertSame(230.0, $events[0]['hv_hpc_y']);
         $this->assertTrue($context->hasEvents());

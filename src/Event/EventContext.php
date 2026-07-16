@@ -22,7 +22,7 @@ use Helioviewer\Api\Sentry\Sentry;
  *     'pin'       => 'AR',
  *     'hv_hpc_x'  => -119.0,           // rotated for this frame
  *     'hv_hpc_y'  => 570.2,
- *     'footprint' => [{x,y}, ...],     // already shifted by (dx,dy)
+ *     'footprint' => [[{x,y}, ...], ...],  // list of rings; every point already shifted by (dx,dy)
  *   ]
  *
  * NOTE: there is no separate label_visibility flag. The renderer treats an
@@ -129,7 +129,10 @@ class EventContext
                 $footprint = [];
                 if (!empty($event['footprint'])) {
                     $footprint = array_map(
-                        fn($p) => ['x' => $p['x'] + $dx, 'y' => $p['y'] + $dy],
+                        fn(array $ring) => array_map(
+                            fn($p) => ['x' => $p['x'] + $dx, 'y' => $p['y'] + $dy],
+                            $ring
+                        ),
                         $event['footprint']
                     );
                 }

@@ -16,7 +16,8 @@
                     "enum": [
                         "HEK",
                         "CCMC",
-                        "RHESSI"
+                        "RHESSI",
+                        "WSA"
                     ]
                 },
                 "visible": { "type": "boolean" },

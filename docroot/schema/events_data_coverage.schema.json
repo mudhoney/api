@@ -2,20 +2,16 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://api.helioviewer.org/schema/events_data_coverage.schema.json",
     "title": "eventsDataCoverage request body",
-    "description": "Selection paths for the events timeline. Paths are canonical SOURCE>>Label[>>FRM[>>...]] strings; variable depth is allowed.",
+    "description": "Selection paths for the events timeline. Paths are canonical SOURCE>>Label[>>FRM[>>...]] strings; variable depth is allowed. At least one selection is required.",
     "type": "object",
     "additionalProperties": false,
     "required": ["event_selections"],
     "properties": {
         "event_selections": {
-            "type": "array",
-            "minItems": 1,
-            "maxItems": 200,
-            "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 600
-            }
+            "allOf": [
+                { "$ref": "https://api.helioviewer.org/schema/event_selections.schema.json" },
+                { "minItems": 1 }
+            ]
         }
     }
 }

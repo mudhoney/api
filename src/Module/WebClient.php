@@ -18,7 +18,7 @@ require_once HV_ROOT_DIR.'/../src/Helper/ErrorHandler.php';
 
 use Helioviewer\Api\Module\BaseModule;
 use Helioviewer\Api\Module\ModuleInterface;
-use Helioviewer\Api\Event\EventsStateManager;
+use Helioviewer\Api\Event\LegacyEventsStringParser;
 use Helioviewer\Api\Event\EventContext;
 use Helioviewer\Api\Event\Timeline\Timeline as EventTimeline;
 use Helioviewer\Api\Event\Api\EventsApiException;
@@ -614,30 +614,34 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
             );
         }
 
-        // Event legacy string
-        $events_legacy_string = "";
-        if ( array_key_exists('events', $this->_params) ) {
-            $events_legacy_string = $this->_params['events'];
+        // eventLabels sets per-source label visibility (markers always on) and
+        // applies to whichever event param is used. Optional; defaults off.
+        $event_labels = array_key_exists('eventLabels', $this->_params) ? (bool)$this->_params['eventLabels'] : false;
+        $visibilitySelections = LegacyEventsStringParser::visibilityFromLabels($event_labels);
+
+        // Selections. Precedence: event_selections (canonical) first, then the
+        // legacy ?events= bracket-string, then none. Both params are optional.
+        // The composite persists $selections + $visibilitySelections (via
+        // EventContext) as the new-shape blob -- so a URL-params screenshot row is
+        // indistinguishable from a JSON postScreenshot row.
+        if ( array_key_exists('event_selections', $this->_params) ) {
+            // Canonical: semicolon-separated "SOURCE>>Label[>>FRM]" paths, e.g.
+            // event_selections=HEK>>Active Region;WSA>>Magnetic Connectivity>>SO
+            $parts = array_map('trim', explode(';', $this->_params['event_selections']));
+            $selections = array_values(array_filter($parts, fn($p) => $p !== ''));
+        } elseif ( array_key_exists('events', $this->_params) ) {
+            // Legacy bracket-string.
+            $selections = LegacyEventsStringParser::parse($this->_params['events']);
+        } else {
+            $selections = [];
         }
-
-        // Event legacy labels switch
-        $event_labels = false;
-        if ( array_key_exists('eventLabels', $this->_params) ) {
-            $event_labels = (bool)$this->_params['eventLabels'];
-        }
-
-
-        // ATTENTION! These two fields eventsLabels and eventSourceString needs to be kept in DB schema
-        // We are keeping them to support old takeScreenshot , queueMovie requests
-        // Events manager built from old logic
-        $events_manager = EventsStateManager::buildFromLegacyEventStrings($events_legacy_string, $event_labels);
 
         $screenshotDate = $this->_params['date'];
         $totalStart = microtime(true);
         $eventContext = EventContext::build(
             frameTimestamps: [$screenshotDate],
-            selections: $events_manager->getSelections(),
-            visibilitySelections: $events_manager->getVisibilitySelections(),
+            selections: $selections,
+            visibilitySelections: $visibilitySelections,
             api: $this->eventsApi(),
             logLabel: "Screenshot:{$screenshotDate}",
         );
@@ -1808,7 +1812,7 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
                 'required' => array('date', 'imageScale', 'layers'),
                 'optional' => array('display', 'watermark', 'x1', 'x2',
                                     'y1', 'y2', 'x0', 'y0', 'width', 'height',
-                                    'events', 'eventLabels', 'movieIcons', 'scale',
+                                    'events', 'event_selections', 'eventLabels', 'movieIcons', 'scale',
                                     'scaleType', 'scaleX', 'scaleY',
                                     'callback', 'switchSources', 'celestialBodiesLabels', 'celestialBodiesTrajectories'),
                 'floats'   => array('imageScale', 'x1', 'x2', 'y1', 'y2',
@@ -1819,6 +1823,7 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
                                     'scale', 'movieIcons', 'switchSources'),
                 'alphanum' => array('scaleType', 'callback', 'celestialBodiesLabels', 'celestialBodiesTrajectories'),
                 'legacy_event_string' => array('events'),
+                'any'      => array('event_selections'),
                 'choices'  => array('scaleType' => ['earth', 'scalebar']),
                 'layer'    => array('layers')
             );

@@ -108,8 +108,18 @@ final class LegacyEventsStringParser
      */
     public static function selectionsFromUrlParams(string $events_state_string, bool $labels): array
     {
-        $selections = self::parse($events_state_string);
+        return [self::parse($events_state_string), self::visibilityFromLabels($labels)];
+    }
 
+    /**
+     * Build a per-source visibility map from the global eventLabels flag.
+     * Markers are always visible (the legacy URL API has no per-source marker
+     * toggle); label_visibility comes from $labels. One entry per known source.
+     *
+     * @return array<string, array{marker_visibility: bool, label_visibility: bool}>
+     */
+    public static function visibilityFromLabels(bool $labels): array
+    {
         $visibility = [];
         foreach (array_keys(EventTypeCatalogue::MAP) as $source) {
             $visibility[$source] = [
@@ -118,6 +128,6 @@ final class LegacyEventsStringParser
             ];
         }
 
-        return [$selections, $visibility];
+        return $visibility;
     }
 }

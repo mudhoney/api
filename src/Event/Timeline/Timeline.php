@@ -4,7 +4,6 @@ namespace Helioviewer\Api\Event\Timeline;
 
 use Helioviewer\Api\Event\Api\EventsApi;
 use Helioviewer\Api\Event\Api\EventsApiInterface;
-use Helioviewer\Api\Event\EventSelections;
 
 /**
  * Orchestrator for event coverage timeline queries.
@@ -14,19 +13,21 @@ use Helioviewer\Api\Event\EventSelections;
  * and returns JSON for the frontend timeline.
  *
  * Usage:
- *   $timeline = new Timeline($eventLayers, $start, $end, $current, $eventsApi);
+ *   $timeline = new Timeline($paths, $start, $end, $current, $eventsApi);
  *   echo $timeline->execute();
  */
 class Timeline
 {
     private TimeRange $range;
     private string $resolution;
-    private EventSelections $eventSelections;
+    /** @var string[] canonical SOURCE>>Label[>>FRM] selection paths */
+    private array $paths;
     private EventsApiInterface $eventsApi;
     private CoverageInterface $strategy;
 
     /**
-     * @param string $eventLayers Legacy event string e.g. '[AR,all,1],[FL,NOAA_SWPC,1]'
+     * @param string[] $paths Canonical selection paths, e.g.
+     *                        ['HEK>>Active Region', 'WSA>>Magnetic Connectivity>>SO']
      * @param mixed $startTimestamp Start time in milliseconds
      * @param mixed $endTimestamp End time in milliseconds
      * @param mixed $currentTimestamp Current observation time in milliseconds
@@ -35,7 +36,7 @@ class Timeline
      * @throws \InvalidArgumentException If timestamps are invalid
      */
     public function __construct(
-        string $eventLayers,
+        array $paths,
         $startTimestamp,
         $endTimestamp,
         $currentTimestamp,
@@ -48,8 +49,8 @@ class Timeline
         // Calculate resolution from the time range
         $this->resolution = Resolution::fromRange($this->range->range());
 
-        // Parse legacy event string into API selection paths
-        $this->eventSelections = EventSelections::buildFromLegacyEventStrings($eventLayers);
+        // Canonical selection paths, as sent by the eventsDataCoverage POST body.
+        $this->paths = array_values($paths);
 
         // API client — use provided or create default
         $this->eventsApi = $eventsApi ?? new EventsApi();
@@ -61,45 +62,16 @@ class Timeline
     }
 
     /**
-     * Factory for callers that already have pre-parsed selection paths
-     * (e.g. the eventsDataCoverage POST body). Skips the legacy-string parser.
-     *
-     * @param string[]                 $paths            Selection paths (e.g. ['HEK>>Active Region', 'WSA>>Magnetic Connectivity'])
-     * @param mixed                    $startTimestamp   ms epoch
-     * @param mixed                    $endTimestamp     ms epoch
-     * @param mixed                    $currentTimestamp ms epoch
-     * @param EventsApiInterface|null  $eventsApi
-     * @param CoverageInterface|null   $strategy
-     */
-    public static function fromPaths(
-        array $paths,
-        $startTimestamp,
-        $endTimestamp,
-        $currentTimestamp,
-        ?EventsApiInterface $eventsApi = null,
-        ?CoverageInterface $strategy = null
-    ): self {
-        // Construct with an empty legacy string, then replace eventSelections
-        // with the pre-parsed paths. The empty string is a no-op inside
-        // buildFromLegacyEventStrings so this is safe.
-        $instance = new self('', $startTimestamp, $endTimestamp, $currentTimestamp, $eventsApi, $strategy);
-        $instance->eventSelections = EventSelections::buildFromPaths($paths);
-        return $instance;
-    }
-
-    /**
      * Execute the timeline query and return JSON string.
      *
      * @return string JSON array of series data for the frontend
      */
     public function execute(): string
     {
-        $paths = iterator_to_array($this->eventSelections);
-
         $data = $this->strategy->execute(
             $this->eventsApi,
             $this->range,
-            $paths,
+            $this->paths,
             $this->resolution
         );
 
@@ -109,5 +81,6 @@ class Timeline
     // Getters for testing
     public function getResolution(): string { return $this->resolution; }
     public function getRange(): TimeRange { return $this->range; }
-    public function getEventSelections(): EventSelections { return $this->eventSelections; }
+    /** @return string[] */
+    public function getPaths(): array { return $this->paths; }
 }

@@ -1006,8 +1006,11 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
             return $this->getDataCoverageForLayers();
         } else if (!empty($this->_options['eventLayers'])) {
             try {
+                // Legacy callers still pass the bracket-string; parse it into
+                // canonical paths for the (now path-based) Timeline.
+                $paths = LegacyEventsStringParser::parse($this->_options['eventLayers']);
                 $timeline = new EventTimeline(
-                    $this->_options['eventLayers'],
+                    $paths,
                     $this->_options['startDate'] ?? null,
                     $this->_options['endDate'] ?? null,
                     $this->_options['currentDate'] ?? null,
@@ -1044,7 +1047,7 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
             $json_params = $this->_params['json'] ?? [];
             $paths       = $json_params['event_selections'] ?? [];
 
-            $timeline = EventTimeline::fromPaths(
+            $timeline = new EventTimeline(
                 $paths,
                 $this->_params['startDate'] ?? null,
                 $this->_params['endDate']   ?? null,

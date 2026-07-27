@@ -93,7 +93,6 @@ class Image_Composite_HelioviewerCompositeImage {
     protected $height;
     protected $interlace;
     protected $layers;
-    protected $eventsManager;
     protected $movieIcons;
     protected $scale;
     protected $scaleType;
@@ -132,7 +131,7 @@ class Image_Composite_HelioviewerCompositeImage {
      *
      * @return void
      */
-    public function __construct($layers, $eventsManager, $movieIcons, $celestialBodies, $scale, $scaleType, $scaleX, $scaleY, $obsDate, $roi, $options) {
+    public function __construct($layers, EventContext $eventContext, $movieIcons, $celestialBodies, $scale, $scaleType, $scaleX, $scaleY, $obsDate, $roi, $options) {
 
         set_time_limit(90); // Extend time limit to avoid timeouts
 
@@ -153,7 +152,6 @@ class Image_Composite_HelioviewerCompositeImage {
             'grayscale' => false,
             'eclipse' => false,
             'moon' => false,
-            'eventContext' => EventContext::empty(),
         );
 
         $options = array_replace($defaults, $options);
@@ -163,9 +161,8 @@ class Image_Composite_HelioviewerCompositeImage {
         $this->imageScale = $roi->imageScale();
 
         $this->db = $options['database'] ? $options['database'] : new Database_ImgIndex();
-        $this->eventContext = $options['eventContext'];
+        $this->eventContext = $eventContext;
         $this->layers = $layers;
-        $this->eventsManager = $eventsManager;
         $this->movieIcons = $movieIcons;
         $this->scale  = $scale;
         $this->scaleType = $scaleType;

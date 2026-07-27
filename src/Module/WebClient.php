@@ -538,7 +538,7 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
         // Create the screenshot
         $screenshot = new Image_Composite_HelioviewerScreenshot(
             $layers,
-            EventsStateManager::buildFromEventsState([]),
+            $eventContext,
             $movieIcons,
             $celestialBodies,
             $scale,
@@ -547,7 +547,7 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
             $scaleY,
             $json_params['date'],
             $roi,
-            array_merge($json_params, ['eventContext' => $eventContext])
+            $json_params
         );
 
         // Display screenshot
@@ -652,7 +652,7 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
         // Create the screenshot
         $screenshot = new Image_Composite_HelioviewerScreenshot(
             $layers,
-            $events_manager,
+            $eventContext,
             $movieIcons,
             $celestialBodies,
             $scale,
@@ -661,7 +661,7 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
             $scaleY,
             $this->_params['date'],
             $roi,
-            array_merge($this->_options, ['eventContext' => $eventContext])
+            $this->_options
         );
 
         // Display screenshot
@@ -743,25 +743,18 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
                 'layer names.', 22);
         }
 
-        // Event Layers
-        $events_state_from_metadata = json_decode($metaData['eventsState'], true);
-        $events_manager;
-
-        // ATTENTION! These two fields eventsLabels and eventSourceString needs to be kept in DB schema
-        // We are keeping them to support old takeScreenshot , queueMovie requests
-
-        if(!empty($events_state_from_metadata)) {
-            $events_manager = EventsStateManager::buildFromEventsState($events_state_from_metadata);
-        } else {
-            $events_manager = EventsStateManager::buildFromLegacyEventStrings($metaData['eventSourceString'], (bool)$metaData['eventsLabels']);
-        }
+        // Event Layers — the persisted blob is the canonical shape; every row
+        // is converted by the deploy-time migration scripts, so read it directly.
+        $events_state_from_metadata = json_decode($metaData['eventsState'], true) ?? [];
+        $selections           = $events_state_from_metadata['event_selections']            ?? [];
+        $visibilitySelections = $events_state_from_metadata['event_visibility_selections'] ?? [];
 
         $screenshotDate = $metaData['observationDate'];
         $totalStart = microtime(true);
         $eventContext = EventContext::build(
             frameTimestamps: [$screenshotDate],
-            selections: $events_manager->getSelections(),
-            visibilitySelections: $events_manager->getVisibilitySelections(),
+            selections: $selections,
+            visibilitySelections: $visibilitySelections,
             api: $this->eventsApi(),
             logLabel: "Screenshot:{$screenshotDate}",
         );
@@ -780,7 +773,7 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
         // Create the screenshot
         $screenshot = new Image_Composite_HelioviewerScreenshot(
             $layers,
-            $events_manager,
+            $eventContext,
             (bool)$metaData['movieIcons'],
             $celestialBodies,
             (bool)$metaData['scale'],
@@ -789,7 +782,7 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
             $metaData['scaleY'],
             $metaData['observationDate'],
             $roi,
-            array_merge($options, ['eventContext' => $eventContext])
+            $options
         );
     }
 
@@ -1416,9 +1409,6 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
         // ATTENTION! These two fields eventsLabels and eventSourceString needs to be kept in DB schema
         // We are keeping them to support old takeScreenshot , queueMovie requests
 
-        // Create empty events object required for screenshots.
-        $events_manager = EventsStateManager::buildFromLegacyEventStrings('', false);
-
         // Create empty celestial bodies list
         $celestialBodies = array( "labels" => "",
                                 "trajectories" => "");
@@ -1427,7 +1417,7 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
         include_once HV_ROOT_DIR.'/../src/Image/Composite/HelioviewerScreenshot.php';
         $screenshot = new Image_Composite_HelioviewerScreenshot(
             $layers,
-            $events_manager,
+            EventContext::empty(),
             false,
             $celestialBodies,
             false,

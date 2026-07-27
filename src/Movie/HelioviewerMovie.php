@@ -35,7 +35,6 @@ require_once HV_ROOT_DIR . '/../src/Helper/HelioviewerLayers.php';
 require_once HV_ROOT_DIR . '/../src/Helper/RegionOfInterest.php';
 require_once HV_ROOT_DIR . '/../src/Helper/Serialize.php';
 
-use Helioviewer\Api\Event\EventsStateManager;
 use Helioviewer\Api\Event\EventContext;
 use Helioviewer\Api\Event\Api\EventsApi;
 use Helioviewer\Api\Sentry\Sentry;
@@ -87,7 +86,6 @@ class Movie_HelioviewerMovie {
 
     private $_db;
     private $_layers;
-    private $_eventsManager;
     private $_selections           = [];
     private $_visibilitySelections = [];
     private $_eventsStateBlob      = [];
@@ -181,12 +179,6 @@ class Movie_HelioviewerMovie {
         $this->_eventsStateBlob      = $events_state_from_info;
         $this->_selections           = $events_state_from_info['event_selections']            ?? [];
         $this->_visibilitySelections = $events_state_from_info['event_visibility_selections'] ?? [];
-
-        // Plumbing only: the movie-frame composite ctor still accepts an
-        // EventsStateManager (shared base-class signature), but a movie frame
-        // never reads it -- it renders from the injected EventContext. Goes
-        // away when the composite ctor drops the manager parameter.
-        $this->_eventsManager = EventsStateManager::buildFromEventsState([]);
 
         // Regon of interest
         $this->_roi = Helper_RegionOfInterest::parsePolygonString($info['roi'], $info['imageScale']);
@@ -568,8 +560,6 @@ class Movie_HelioviewerMovie {
             $contextMs
         ));
 
-        $options['eventContext'] = $eventContext;
-
         // Index of preview frame
         $previewIndex = floor($this->numFrames/2);
 
@@ -589,7 +579,7 @@ class Movie_HelioviewerMovie {
             try {
                 $frameStart = microtime(true);
                 $screenshot = new Image_Composite_HelioviewerMovieFrame(
-                    $filepath, $this->_layers, $this->_eventsManager,
+                    $filepath, $this->_layers, $eventContext,
                     $this->movieIcons, $this->celestialBodies,
                     $this->scale, $this->scaleType, $this->scaleX, $this->scaleY,
                     $time, $this->_roi, $options);

@@ -55,7 +55,9 @@ class EventContext
         private array $requestedTimestamps = [],
         private array $events = [],
         private array $observations = [],
-        private array $visibilitySelections = []
+        private array $visibilitySelections = [],
+        private array $rawSelections = [],
+        private array $rawVisibilitySelections = []
     ) {
     }
 
@@ -90,6 +92,12 @@ class EventContext
         int $chunkSize = 50,
         string $logLabel = ''
     ): self {
+        // Remember what the client asked for before the marker_visibility filter
+        // below mutates $selections. This is the blob we persist so a later
+        // reTakeScreenshot / movie reQueue reproduces the identical render.
+        $rawSelections           = $selections;
+        $rawVisibilitySelections = $visibilitySelections;
+
         // For each source whose marker_visibility is explicitly false, drop
         // its "SOURCE>>..." selections. Missing / non-false → assume visible.
         foreach ($visibilitySelections as $source => $flags) {
@@ -107,7 +115,11 @@ class EventContext
         // remembers the caller's set so getEventsForDate() returns [] for known
         // dates without triggering the "unrequested date" Sentry signal.
         if (empty($frameTimestamps) || empty($selections)) {
-            return new self($requestedTimestampsSet);
+            return new self(
+                $requestedTimestampsSet,
+                rawSelections: $rawSelections,
+                rawVisibilitySelections: $rawVisibilitySelections
+            );
         }
 
         try {
@@ -121,7 +133,11 @@ class EventContext
                 'log_label'              => $logLabel,
             ]);
             Sentry::capture($e);
-            return new self($requestedTimestampsSet);
+            return new self(
+                $requestedTimestampsSet,
+                rawSelections: $rawSelections,
+                rawVisibilitySelections: $rawVisibilitySelections
+            );
         }
 
         // Wrap each raw event once so getEventsForDate can call methods on it
@@ -136,7 +152,9 @@ class EventContext
             $requestedTimestampsSet,
             $events,
             $raw['timestamps'] ?? [],
-            $visibilitySelections
+            $visibilitySelections,
+            $rawSelections,
+            $rawVisibilitySelections
         );
     }
 
@@ -228,5 +246,19 @@ class EventContext
             }
         }
         return false;
+    }
+
+    /**
+     * The persist blob: the raw event_selections + event_visibility_selections
+     * that produced this context, exactly as the client sent them (before the
+     * marker_visibility filter). Written to the screenshots/movies row so a
+     * cache-miss retake or reQueue rebuilds the same render.
+     */
+    public function exportEventsStateBlob(): string
+    {
+        return json_encode([
+            'event_selections'            => $this->rawSelections,
+            'event_visibility_selections' => $this->rawVisibilitySelections,
+        ]);
     }
 }

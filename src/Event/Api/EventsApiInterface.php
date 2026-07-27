@@ -57,7 +57,7 @@ interface EventsApiInterface {
      * Returns the RAW merged response (no legacy conversion):
      *   [
      *     'events'     => [ <uuid> => {path, label, start, end, hv_hpc_x, hv_hpc_y, footprint, type, pin} ],
-     *     'timestamps' => [ <ts>   => { <uuid> => {hv_hpc_x, hv_hpc_y} } ],
+     *     'timestamps' => [ <ts>   => { <uuid> => {dx, dy} } ],
      *   ]
      *
      * Timestamps are paginated by $chunkSize (capped at the upstream limit of

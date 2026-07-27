@@ -504,14 +504,12 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
 
         }
 
-        $events_manager = EventsStateManager::buildFromEventsState($json_params['eventsState']);
-
         $screenshotDate = $json_params['date'];
         $totalStart = microtime(true);
         $eventContext = EventContext::build(
-            timestamps: [$screenshotDate],
-            selections: $events_manager->getSelections(),
-            visibilitySelections: $events_manager->getVisibilitySelections(),
+            frameTimestamps: [$screenshotDate],
+            selections: $json_params['event_selections'] ?? [],
+            visibilitySelections: $json_params['event_visibility_selections'] ?? [],
             api: $this->eventsApi(),
             logLabel: "Screenshot:{$screenshotDate}",
         );
@@ -525,7 +523,8 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
 
         Sentry::setContext('Screenshot Request Variables',[
             'layers' => $layers,
-            'events_manager' => $events_manager,
+            'event_selections' => $json_params['event_selections'] ?? [],
+            'event_visibility_selections' => $json_params['event_visibility_selections'] ?? [],
             'movieIcons' => $movieIcons,
             'celestialBodies' => $celestialBodies,
             'scale' => $scale,
@@ -539,7 +538,7 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
         // Create the screenshot
         $screenshot = new Image_Composite_HelioviewerScreenshot(
             $layers,
-            $events_manager,
+            EventsStateManager::buildFromEventsState([]),
             $movieIcons,
             $celestialBodies,
             $scale,
@@ -636,7 +635,7 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
         $screenshotDate = $this->_params['date'];
         $totalStart = microtime(true);
         $eventContext = EventContext::build(
-            timestamps: [$screenshotDate],
+            frameTimestamps: [$screenshotDate],
             selections: $events_manager->getSelections(),
             visibilitySelections: $events_manager->getVisibilitySelections(),
             api: $this->eventsApi(),
@@ -760,7 +759,7 @@ class Module_WebClient extends BaseModule implements ModuleInterface {
         $screenshotDate = $metaData['observationDate'];
         $totalStart = microtime(true);
         $eventContext = EventContext::build(
-            timestamps: [$screenshotDate],
+            frameTimestamps: [$screenshotDate],
             selections: $events_manager->getSelections(),
             visibilitySelections: $events_manager->getVisibilitySelections(),
             api: $this->eventsApi(),

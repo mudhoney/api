@@ -6,7 +6,7 @@ MIGRATE_EVENTS = $(DOCKER_EXEC) php management/events
 APPLY_FLAG = $(if $(APPLY),--apply,)
 
 .PHONY: help test event-tests regression-tests test-filter test-file shell exec restart-movies db-shell \
-        migrate-events migrate-screenshots migrate-movies migrate-client-states
+        migrate-events migrate-screenshots migrate-movies migrate-client-states requeue-movie
 
 .DEFAULT_GOAL := help
 
@@ -31,6 +31,8 @@ help:
 	@echo "  make migrate-screenshots   - Only the screenshots table (dry-run; APPLY=1 to write)"
 	@echo "  make migrate-movies        - Only the movies table (dry-run; APPLY=1 to write)"
 	@echo "  make migrate-client-states - Only the client_states table (dry-run; APPLY=1 to write)"
+	@echo "  make requeue-movie id=...  - Rebuild a movie by its public id (force=true)"
+	@echo "                               e.g. make requeue-movie id=hl66n"
 
 shell:
 	$(DOCKER_EXEC) bash
@@ -81,3 +83,10 @@ migrate-client-states:
 	$(MIGRATE_EVENTS)/migrate_client_states_events_shape.php $(APPLY_FLAG)
 
 migrate-events: migrate-screenshots migrate-movies migrate-client-states
+
+# Rebuild a movie by its public id (e.g. hl66n). force=true so it re-queues even
+# when the cached file already exists. Usage: make requeue-movie id=hl66n
+requeue-movie:
+	@if [ -z "$(id)" ]; then echo "Error: pass id=<movieCode>, e.g. make requeue-movie id=hl66n"; exit 1; fi
+	$(DOCKER_EXEC) curl -s "http://localhost/?action=reQueueMovie&id=$(id)&force=true"
+	@echo

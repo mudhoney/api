@@ -1,7 +1,12 @@
 DOCKER_EXEC = docker compose exec api
 PHPUNIT = $(DOCKER_EXEC) vendor/bin/phpunit --bootstrap tests/autoload.php --testdox
 
-.PHONY: help test event-tests regression-tests test-filter test-file shell exec restart-movies db-shell
+# Events-shape migration runners. Dry-run by default; pass APPLY=1 to write.
+MIGRATE_EVENTS = $(DOCKER_EXEC) php management/events
+APPLY_FLAG = $(if $(APPLY),--apply,)
+
+.PHONY: help test event-tests regression-tests test-filter test-file shell exec restart-movies db-shell \
+        migrate-events migrate-screenshots migrate-movies migrate-client-states
 
 .DEFAULT_GOAL := help
 
@@ -20,6 +25,12 @@ help:
 	@echo "  make exec cmd=\"...\"        - Run a command in api container"
 	@echo "  make restart-movies        - Restart movies container"
 	@echo "  make db-shell              - Open MySQL shell"
+	@echo "  make migrate-events        - Events-shape migration, all tables (dry-run)"
+	@echo "                               lists unique tree=>shape conversions, writes nothing"
+	@echo "                               add APPLY=1 to actually write, e.g. make migrate-events APPLY=1"
+	@echo "  make migrate-screenshots   - Only the screenshots table (dry-run; APPLY=1 to write)"
+	@echo "  make migrate-movies        - Only the movies table (dry-run; APPLY=1 to write)"
+	@echo "  make migrate-client-states - Only the client_states table (dry-run; APPLY=1 to write)"
 
 shell:
 	$(DOCKER_EXEC) bash
@@ -57,3 +68,16 @@ restart-movies:
 
 db-shell:
 	docker compose exec database mariadb -u helioviewer -phelioviewer helioviewer
+
+# Events-shape migration. Each target is dry-run by default (lists unique
+# tree=>shape conversions, no writes); pass APPLY=1 to perform the UPDATEs.
+migrate-screenshots:
+	$(MIGRATE_EVENTS)/migrate_screenshots_events_shape.php $(APPLY_FLAG)
+
+migrate-movies:
+	$(MIGRATE_EVENTS)/migrate_movies_events_shape.php $(APPLY_FLAG)
+
+migrate-client-states:
+	$(MIGRATE_EVENTS)/migrate_client_states_events_shape.php $(APPLY_FLAG)
+
+migrate-events: migrate-screenshots migrate-movies migrate-client-states

@@ -217,7 +217,10 @@ class EventsApi implements EventsApiInterface {
             $chunkSize = $maxChunk;
         }
 
-        $url = "/helioviewer/events/frames_with_selections";
+        // ?withDelta asks the upstream to include the per-observation rotation
+        // deltas (dx, dy) in the 'timestamps' block, so EventContext can shift
+        // each event's marker + footprint to the frame's timestamp.
+        $url = "/helioviewer/events/frames_with_selections?withDelta";
         $chunks = array_chunk($timestamps, $chunkSize);
 
         $fetchChunk = function (array $chunkTimestamps) use ($url, $selections) {

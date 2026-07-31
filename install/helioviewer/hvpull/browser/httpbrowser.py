@@ -2,6 +2,7 @@
 import sys
 import os
 import socket
+from typing import Callable, Optional
 from helioviewer.hvpull.browser.basebrowser import BaseDataBrowser, NetworkError
 
 if (sys.version_info >= (3, 0)):
@@ -81,7 +82,7 @@ class HTTPDataBrowser(BaseDataBrowser):
         # filter(lambda url: url.endswith("/"), self._query(location))
         return self.server.compute_directories(start_date, end_date)
 
-    def get_files(self, location, extension, filter_func: callable | None = None):
+    def get_files(self, location, extension, filter_func: Optional[Callable] = None):
         """Get all the files that end with specified extension at the uri"""
         files = None
         num_retries = 0
